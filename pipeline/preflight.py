@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -69,19 +70,38 @@ def main() -> None:
     if not items:
         die("queue is empty — nothing to work on")
 
-    # Pick the next item: in_progress takes priority (resume), else first queued.
+    # Pick the next item: in_progress takes priority (resume), else first queued
+    # whose blockers are satisfied. Blockers are strings that may reference other
+    # item IDs by exact match like "R-3 must reach status=passed first"; we scan
+    # the string for any item id and require those to be `passed`.
+    def status_by_id() -> dict:
+        return {(it.get("id") or ""): (it.get("status") or "") for it in items}
+
+    def blockers_satisfied(item: dict, idx: dict) -> bool:
+        for line in (item.get("blockers") or []):
+            if not isinstance(line, str):
+                continue
+            for other_id, other_status in idx.items():
+                # exact-token match: blocker string mentions an existing item id
+                # surrounded by word boundaries
+                if other_id and re.search(rf"\b{re.escape(other_id)}\b", line):
+                    if other_status != "passed":
+                        return False
+        return True
+
     pick = None
     for it in items:
         if it.get("status") == "in_progress":
             pick = it
             break
     if pick is None:
+        idx = status_by_id()
         for it in items:
-            if it.get("status") == "queued":
+            if it.get("status") == "queued" and blockers_satisfied(it, idx):
                 pick = it
                 break
     if pick is None:
-        die("no items with status in {queued, in_progress} — queue exhausted")
+        die("no items with status in {queued, in_progress} satisfying blockers — queue exhausted or all queued items are blocked")
 
     # 4. Item-level sanity
     item_id = pick.get("id")

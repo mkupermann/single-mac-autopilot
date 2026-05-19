@@ -155,6 +155,36 @@ def append_logbook(item_id: str, verdict: str, log_tail: str) -> None:
         f.write(entry)
 
 
+def write_result_json(item: dict, verdict: str, attempts: int, log_tail: str) -> None:
+    """Standardized per-item result.json. Cross-run comparison reads these.
+
+    Schema:
+        item_id, title, hypothesis, env (recorded), pytest_target,
+        verdict, attempts, started_at, finished_at, wallclock_seconds,
+        log_tail (last 2000 chars).
+    """
+    import json
+    item_id = item.get("id", "?")
+    out_dir = (item.get("env") or {}).get("<<PROJECT>>_R11_OUT_DIR") \
+              or (item.get("env") or {}).get("<<PROJECT>>_R8_OUT_DIR") \
+              or str(STATE_DIR / item_id)
+    out_path = Path(out_dir) / "result.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "item_id": item_id,
+        "title": item.get("title", ""),
+        "hypothesis": item.get("hypothesis", ""),
+        "env": item.get("env") or {},
+        "pytest_target": item.get("pytest_target", ""),
+        "verdict": verdict,
+        "attempts": attempts,
+        "started_at": item.get("started_at", ""),
+        "finished_at": _dt.datetime.now().isoformat(),
+        "log_tail": log_tail[-2000:] if log_tail else "",
+    }
+    out_path.write_text(json.dumps(record, indent=2, default=str))
+
+
 def mail_session_result(item_id: str, verdict: str, log_tail: str) -> None:
     if send_mail is None:
         return
@@ -233,8 +263,9 @@ def main() -> int:
                 verdict, log_tail = evaluate_completed_item(item)
                 save_queue_item_status(item_id, verdict, attempts, _dt.datetime.now().isoformat())
                 append_logbook(item_id, verdict, log_tail)
+                write_result_json(item, verdict, attempts, log_tail)
                 mail_session_result(item_id, verdict, log_tail)
-                log(f"  evaluated {item_id} → {verdict} (attempts={attempts})")
+                log(f"  evaluated {item_id} → {verdict} (attempts={attempts}, result.json written)")
         # Clean pidfile, fall through to fire next
         PID_PATH.unlink(missing_ok=True)
         CURRENT_ITEM_PATH.unlink(missing_ok=True)

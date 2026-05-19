@@ -131,9 +131,9 @@ site.
 
 ## Postmortem: what's still raw
 
-- Salvage workflow is manual. When an item NULLs but had written
+- ~~Salvage workflow is manual.~~ **RESOLVED 2026-05-19**: `pipeline/salvage_branch.py` identifies code-vs-state changes and stages code-only commits for review.
   useful code, bringing that code to main requires human attention.
-- Cross-run comparison is manual. Long-run results live in per-item
+- ~~Cross-run comparison is manual.~~ **RESOLVED 2026-05-19**: `pipeline/compare_runs.py` aggregates `result.json` files (plain text + Markdown output).
   out_dirs; no aggregator tabulates them.
 - Branch lifecycle is manual. Old autopilot/<id> branches accumulate;
   pruning is on the operator.
@@ -144,3 +144,37 @@ site.
 These are TODO items the pipeline will eventually fix. The
 companion research repo (`vibrasim`) is the test-bed where each
 fix is validated against real work before being merged here.
+
+## Resolved 2026-05-19: conditional queueing in preflight
+
+Preflight previously picked the first `queued` item regardless of the
+`blockers:` field, leading to downstream items running before their
+prerequisites passed. Fixed: preflight now scans each `blockers` line
+for word-boundary matches against other item IDs in the queue and
+requires those items to be `passed` before the candidate item is picked.
+
+```python
+def blockers_satisfied(item, idx):
+    for line in (item.get("blockers") or []):
+        for other_id, other_status in idx.items():
+            if re.search(rf"\b{re.escape(other_id)}\b", line):
+                if other_status != "passed":
+                    return False
+    return True
+```
+
+## Resolved 2026-05-19: standardized long-run result.json
+
+`long_run_dispatcher.py` now writes a per-item `result.json` in the
+item's `out_dir` alongside the LOGBOOK append. Schema includes
+`item_id`, `title`, `hypothesis`, `env`, `pytest_target`, `verdict`,
+`attempts`, `started_at`, `finished_at`, `log_tail`. The
+`compare_runs.py` tool reads these for cross-run analysis.
+
+## Still open: session log analytical layer
+
+`session.log` accumulates structurally-similar bug patterns across
+sessions (this lessons-learned doc was hand-extracted from it).
+A grep/jq layer over `session.log` would surface recurring failure
+modes automatically. Not blocking; recommended after the next batch
+of sessions.
