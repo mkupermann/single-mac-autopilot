@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+<<PROJECT>> vacation autopilot launchd job.
+
+Install:
+    cp .<<project>>/autopilot/com.example.autopilot.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.example.autopilot.plist
+
+Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.example.autopilot.plist
+    rm ~/Library/LaunchAgents/com.example.autopilot.plist
+
+Manual trigger (test):
+    launchctl start com.example.autopilot
+
+Status:
+    launchctl list | grep <<project>>
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.autopilot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string><<REPO_ROOT>>/.<<project>>/autopilot/run_autopilot.sh</string>
+    </array>
+
+    <!--
+    Every 6 hours: 02:00, 08:00, 14:00, 20:00. Aligned to overnight + working hours
+    so user can inspect mid-day if at home. 6h cadence + 4h per-session cap leaves
+    2h buffer for the 5h rolling sub-window to clear.
+    -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Hour</key><integer>2</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Hour</key><integer>14</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Hour</key><integer>20</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+    </array>
+
+    <!-- Do not relaunch immediately on exit; we want at-most-one session per slot. -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Inherit a usable PATH (homebrew + repo venv). -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string><<HOME>>/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string><<HOME>></string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string><<REPO_ROOT>></string>
+
+    <key>StandardOutPath</key>
+    <string><<STATE_DIR>>/autopilot/launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string><<STATE_DIR>>/autopilot/launchd.err</string>
+
+    <!-- Don't pile up exit attempts on persistent failure. -->
+    <key>ThrottleInterval</key>
+    <integer>1800</integer>
+</dict>
+</plist>

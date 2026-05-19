@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+autopilot watchdog launchd job.
+
+Runs once per hour. Checks last_tick.txt and queue state; mails Michael
+once per day with a summary and immediately on a hard problem (no tick for 12h+,
+HUMAN_NEEDED count grew, etc.).
+
+Install:
+    cp .<<project>>/autopilot/com.example.watchdog.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.example.watchdog.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.watchdog</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string><<REPO_ROOT>>/.<<project>>/autopilot/run_watchdog.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <key>KeepAlive</key>
+    <false/>
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string><<HOME>>/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string><<HOME>></string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string><<REPO_ROOT>></string>
+
+    <key>StandardOutPath</key>
+    <string><<STATE_DIR>>/autopilot/watchdog.out</string>
+    <key>StandardErrorPath</key>
+    <string><<STATE_DIR>>/autopilot/watchdog.err</string>
+</dict>
+</plist>

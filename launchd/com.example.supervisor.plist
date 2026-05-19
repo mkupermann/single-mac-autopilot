@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+autopilot supervisor launchd job.
+
+Runs every 30 minutes. If wrapper not running and queue has queued items,
+fires a fresh wrapper. If wrapper stuck (lock age > 5h), kills the tree
+and refires. Ensures the queue keeps moving forward without human
+intervention.
+
+Install:
+    cp .<<project>>/autopilot/com.example.supervisor.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.supervisor.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.supervisor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string><<STATE_DIR>>/autopilot/run_supervisor.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>1800</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string><<HOME>>/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string><<HOME>></string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string><<REPO_ROOT>></string>
+
+    <key>StandardOutPath</key>
+    <string><<STATE_DIR>>/autopilot/supervisor.out</string>
+    <key>StandardErrorPath</key>
+    <string><<STATE_DIR>>/autopilot/supervisor.err</string>
+</dict>
+</plist>

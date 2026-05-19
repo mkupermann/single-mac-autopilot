@@ -1,0 +1,26 @@
+# Example pre-registered queue
+#
+# Each item declares its acceptance criteria in `preregistered_acceptance:`.
+# Status transitions are mechanical (passed/null/failed/blocked) and computed
+# by postflight from the pytest verdict.
+
+window:
+  start: 2026-01-01
+  end:   2026-12-31
+  default_model: claude-opus-4-7
+  per_session_max_turns: 80
+  per_session_wallclock_hours: 4
+
+items:
+  - id: EX-1
+    title: example item — implement a small utility module
+    brief: docs/briefs/EX-1.md
+    preregistered_acceptance:
+      - "tests/test_example_utility.py::test_handles_empty_input PASSES"
+      - "tests/test_example_utility.py::test_handles_unicode PASSES"
+      - "tests/test_example_utility.py::test_returns_none_on_garbage PASSES"
+    time_budget_hours: 4
+    status: queued
+    attempts: 0
+    blockers: []
+    created: 2026-01-01

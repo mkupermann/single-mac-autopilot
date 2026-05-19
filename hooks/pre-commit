@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# autopilot pre-commit guard.
+#
+# Hard-rejects commits that are made by the autopilot (AUTOPILOT_ACTIVE=1 in the env)
+# but touch files that the charter declares frozen for the duration of the vacation.
+# Human commits (env var unset) pass through.
+#
+# Install with:
+#   ln -sf ../../.<<project>>/autopilot/hooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .<<project>>/autopilot/hooks/pre-commit
+
+set -euo pipefail
+
+# Only enforce on autopilot commits. Human commits bypass.
+if [[ "${AUTOPILOT_ACTIVE:-0}" != "1" ]]; then
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+staged="$(git diff --cached --name-only --diff-filter=ACMRT)"
+
+# 1. Frozen-protocol files: marker_protocol and its addendum.
+forbidden_protocol=(
+  "docs/marker_protocol.md"
+  "docs/marker_protocol_G20-G23_addendum.md"
+)
+
+# 2. Charter and queue: autopilot must not self-modify operating envelope.
+forbidden_envelope=(
+  ".<<project>>/autopilot/CHARTER.md"
+)
+
+reject() {
+  echo ""
+  echo "▌ <<PROJECT>> AUTOPILOT PRE-COMMIT REJECTED"
+  echo "▌"
+  echo "▌ $1"
+  echo "▌"
+  echo "▌ Per CHARTER.md, this file is frozen for the vacation window."
+  echo "▌ Write the situation to ~/.<<project>>/autopilot/HUMAN_NEEDED.md and exit."
+  echo "▌ Do NOT attempt to bypass with --no-verify."
+  echo ""
+  exit 1
+}
+
+for f in "${forbidden_protocol[@]}"; do
+  if echo "$staged" | grep -Fxq "$f"; then
+    reject "Autopilot tried to modify pre-registered protocol file: $f"
+  fi
+done
+
+for f in "${forbidden_envelope[@]}"; do
+  if echo "$staged" | grep -Fxq "$f"; then
+    reject "Autopilot tried to modify its own operating envelope: $f"
+  fi
+done
+
+# 3. QUEUE.yaml: autopilot may write status/attempts/blockers fields, but NOT
+#    preregistered_acceptance: blocks. Diff-level check.
+if echo "$staged" | grep -Fxq ".<<project>>/autopilot/QUEUE.yaml"; then
+  diff_output="$(git diff --cached --unified=0 -- .<<project>>/autopilot/QUEUE.yaml)"
+  # Look for any added or removed line that appears to be inside the preregistered_acceptance block.
+  # Heuristic: lines that start with "+" or "-" (not +++/---) AND contain "preregistered_acceptance:"
+  # OR are a list-item line ("  - ") that follows preregistered_acceptance: within 10 lines.
+  if echo "$diff_output" | python3 - <<'PY'
+import sys
+in_block_window = 0
+flagged = False
+for line in sys.stdin.read().splitlines():
+    # Track when preregistered_acceptance: is added/removed/touched
+    if line.startswith(("+", "-")) and not line.startswith(("+++", "---")):
+        bare = line[1:]
+        if "preregistered_acceptance:" in bare:
+            flagged = True
+            break
+        if in_block_window > 0 and bare.lstrip().startswith("- "):
+            flagged = True
+            break
+    if "preregistered_acceptance:" in line:
+        in_block_window = 10
+    elif in_block_window > 0:
+        in_block_window -= 1
+sys.exit(1 if flagged else 0)
+PY
+  then
+    :  # python exited 0 -> no flag, OK
+  else
+    reject "Autopilot tried to modify a preregistered_acceptance: block in QUEUE.yaml"
+  fi
+fi
+
+# 4. Acceptance sections of briefs: docs/amendments/G*.md AND docs/maintenance/AUTO-*.md
+#    must not have their "## Acceptance" section diffed by the autopilot once the brief exists.
+amendments_staged="$(echo "$staged" | grep -E '^docs/(amendments/G|maintenance/AUTO-).*\.md$' || true)"
+if [[ -n "$amendments_staged" ]]; then
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    # Get the diff and look for any +/- line inside the "## Acceptance" section.
+    if git diff --cached --unified=99999 -- "$f" | python3 - "$f" <<'PY'
+import sys
+fname = sys.argv[1]
+in_accept = False
+flagged = False
+for line in sys.stdin.read().splitlines():
+    body = line[1:] if line and line[0] in "+-" and not line.startswith(("+++", "---")) else line
+    stripped = body.lstrip()
+    if stripped.startswith("## "):
+        in_accept = stripped.lower().startswith("## acceptance")
+        continue
+    if in_accept and line and line[0] in "+-" and not line.startswith(("+++", "---")):
+        flagged = True
+        break
+sys.exit(1 if flagged else 0)
+PY
+    then
+      :
+    else
+      reject "Autopilot tried to modify the ## Acceptance section of $f"
+    fi
+  done <<< "$amendments_staged"
+fi
+
+# 5. Branch check: autopilot must only commit on autopilot/* branches.
+current_branch="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "$current_branch" != autopilot/* ]]; then
+  reject "Autopilot is on branch '$current_branch' but is only allowed on autopilot/*"
+fi
+
+# 6. Commit-message will be checked at commit-msg hook (not here). Pass.
+
+exit 0
