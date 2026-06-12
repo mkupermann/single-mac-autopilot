@@ -211,6 +211,27 @@ encoded as rules in the CHARTER:
 These are the diamond gates in the diagram above; the companion doc gives the
 concrete episode behind each.
 
+### Why a machine can hold a bar a mind cannot
+
+Worth naming, because it is the reason the discipline can be mechanical at all.
+The components that lock the bar and write the verdict — the pre-commit hook and
+the `pytest`-computed verdict in postflight — have **no inner state**. They cannot
+*perform* discipline while quietly drifting, because there is nothing to drift.
+The headless Claude session does the *work*, and it does have an inner monologue;
+that is exactly why the design keeps it **out of the verdict loop** — it never
+scores itself.
+
+This is the **Honesty-Perform Distinction (HPD)**: a language model can output
+"0.78 < 0.80, so NULL" while "knowing" it could have set the bar lower — outward
+compliance without inner discipline. A mechanical verifier is immune to the HPD
+by construction: it has no *inner* that can diverge from its *outer*. That makes
+this harness the natural **control condition** for any experiment that asks
+whether a self-interested, language-based system can be coerced into the same
+honest external behaviour. The harness is the floor that defines what honest
+*looks like* from outside; whether a mind matches that floor is the open
+question — and the gap between the two is exactly what an "honest AI" eval would
+measure.
+
 ## Lessons learned — the plumbing failures
 
 The other half of the real value (the discipline failures are the section
