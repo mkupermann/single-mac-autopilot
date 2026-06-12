@@ -46,6 +46,49 @@ continues as a test-bed for sharpening this pipeline.
 The companion repo's purpose statement is reciprocal: vibrasim's stated
 goal includes *improving this pipeline*.
 
+## How it works
+
+A `launchd` timer fires the wrapper; the wrapper runs preflight, hands one
+locked item to a headless Claude session, and runs postflight, which computes
+the verdict **mechanically** and never trusts the session's self-report. Two
+side jobs keep it honest: a supervisor that refires (or kills a stuck run), and
+a watchdog that mails the operator. The pre-commit hook is the hard floor.
+
+```mermaid
+flowchart TD
+    T["launchd timer<br/>(every 30 min)"] --> SUP["supervisor.py"]
+    SUP -->|"no wrapper running"| W["run_autopilot.sh"]
+    SUP -->|"wrapper alive over 5h"| K["kill process tree<br/>and refire"]
+    W --> PF["preflight.py<br/>pick queued item · check blockers<br/>branch autopilot/ID · baseline pytest"]
+    PF --> CC["headless Claude Code<br/>CHARTER in system prompt<br/>one item · acceptance LOCKED"]
+    CC --> POST["postflight.py<br/>run pre-registered pytest (30-min cap)<br/>mechanical verdict · commit on branch"]
+    POST --> SYNC["sync status fields to main"]
+    POST --> MAIL["mail.py to operator"]
+    LRD["long_run_dispatcher.py<br/>items over 4h · detached"] -.-> POST
+    WD["watchdog.py<br/>heartbeat · daily summary<br/>HUMAN_NEEDED alerts"] -.-> MAIL
+    HK["pre-commit hook<br/>blocks forbidden paths and branches"] --- POST
+```
+
+Each queue item moves through a small, fixed lifecycle. The only verdicts are
+`passed`, `null`, `failed`, and `blocked` — there is no "passed with a caveat".
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> in_progress: preflight picks it
+    in_progress --> passed: tests pass + control fails
+    in_progress --> null: not met (fair attempt)
+    in_progress --> blocked: judgement needed
+    in_progress --> failed: 3 attempts exhausted
+    null --> queued: operator re-queues
+    blocked --> queued: operator resolves
+    passed --> [*]
+    failed --> [*]
+```
+
+(Diagrams are Mermaid — GitHub renders them inline; they live in the README so
+they version with the code.)
+
 ## Components
 
 | Piece | Where | What it does |
@@ -120,11 +163,61 @@ If the session can't get the pre-registered tests to pass, the verdict is
 NULL or FAIL. Not "PASS with a caveat". Not "I'll try a different threshold".
 The discipline is mechanical because human discipline isn't.
 
-## Lessons learned (the real value of this repo)
+The full verdict path, including the gates that decide whether a clean-looking
+result is actually a result:
 
-Documented in [`docs/lessons-learned.md`](docs/lessons-learned.md). Short
-list of failure modes encountered and the fixes that ended up in the
-pipeline:
+```mermaid
+flowchart TD
+    A["Pre-register acceptance + frozen bars"] --> B["Item to in_progress<br/>bars LOCKED (hook-enforced)"]
+    B --> C["Headless session does the work"]
+    C --> D{"Mechanism fired?<br/>treatment engaged + local effect"}
+    D -->|no| DBG["FAIL: fix the instrument<br/>re-run, bars UNCHANGED"]
+    DBG --> C
+    D -->|yes| E{"Pre-reg tests pass<br/>AND negative control fails?"}
+    E -->|no| NULL["NULL / FAIL + postmortem"]
+    E -->|yes| H{"Headline positive?<br/>surprising or thin margin"}
+    H -->|yes| AUD["Audit at higher n<br/>before believing"]
+    H -->|no| REC["record verdict"]
+    AUD --> REC
+    NULL --> REC
+    X["retune the bar to pass"] -.->|FORBIDDEN| E
+    classDef bad fill:#ffe0e0,stroke:#cc0000,color:#000;
+    class X bad;
+```
+
+## The discipline no hook can enforce
+
+The pre-commit hook stops a marker file from being *edited*. It cannot tell
+whether the marker was *well-specified*, or whether a PASS was *earned or
+constructed*. Those are human-judgment failures, and they recur. Six of them,
+each found the hard way on the test-bed, are documented in
+[`docs/epistemic-failure-modes.md`](docs/epistemic-failure-modes.md) and
+encoded as rules in the CHARTER:
+
+1. **A PASS true by construction is not a result** — if the property was
+   hand-coded into the mechanism, reading it back is circular.
+2. **A marker a confound can satisfy is invalid** — and a NULL against it is
+   noise, not evidence (e.g. injected noise the metric also responds to).
+3. **A marker passes trivially when the protocol forces the answer** — the
+   silent-pass rule generalized: a test that cannot fail proves nothing, and
+   neither does one that cannot pass.
+4. **"The mechanism didn't fire" is FAIL→debug, not NULL** — fix the
+   instrument and re-run with the bars unchanged.
+5. **Audit a headline positive before believing it** — re-run a surprising or
+   thin-margin PASS at higher n first.
+6. **Distrust the articulate plan most** — review the *design* before freezing
+   it, and flag the urge to retune rather than slide into it. An instruction to
+   "just freeze it and run" does not waive this.
+
+These are the diamond gates in the diagram above; the companion doc gives the
+concrete episode behind each.
+
+## Lessons learned — the plumbing failures
+
+The other half of the real value (the discipline failures are the section
+above). These are the *operational* failure modes — launchd, git, YAML,
+pytest — each now embedded in the pipeline code. Full detail in
+[`docs/lessons-learned.md`](docs/lessons-learned.md):
 
 - macOS 15 launchd ignores FDA on `/bin/bash` for executables under `~/Documents/` — relocate or use launchd-safe paths.
 - Headless Claude commits referenced files that were never staged ("false pass") — postflight runs the pytest verifier independently of the session's self-report.
