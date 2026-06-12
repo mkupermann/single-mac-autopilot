@@ -86,8 +86,7 @@ stateDiagram-v2
     failed --> [*]
 ```
 
-(Diagrams are Mermaid — GitHub renders them inline; they live in the README so
-they version with the code.)
+
 
 ## Components
 
