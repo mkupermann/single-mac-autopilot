@@ -5,6 +5,12 @@ research project (`mkupermann/vibrasim`). Each one is now embedded in
 the code; this document exists so the next person doesn't have to
 rediscover them.
 
+These are **plumbing** failures (launchd, git, YAML, pytest). The
+**discipline** failures — ways a pre-registered item yields a verdict
+that looks clean but proves nothing, which no hook can catch — live in
+the companion `epistemic-failure-modes.md`, with matching rules in
+`CHARTER.template.md`.
+
 ## macOS 15 silently denies FDA to /bin/bash from launchd
 
 Symptom: launchd job exits 126. Stderr shows `shell-init: error
